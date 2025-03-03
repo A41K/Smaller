@@ -590,7 +590,7 @@
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
     <script>
-        // DOM elements
+// DOM elements
 const recordPlayer = document.getElementById('recordPlayer');
 const vinylSelector = document.getElementById('vinylSelector');
 const activeRecord = document.getElementById('activeRecord');
@@ -617,6 +617,8 @@ let currentVinylIndex = -1;
 let songs = [];
 let progressInterval;
 let lastUploadedImage = null;
+let needleMovementTimeout = null;
+let db = null;
 
 // Default album images (placeholder URLs - in a real application, you would use actual images)
 const defaultAlbumImages = [
@@ -715,8 +717,11 @@ const demoTracks = [
     },
 ];
 
-// Initialize songs array and load saved songs from localStorage
-initializeApp();
+// Initialize IndexedDB and load songs
+initializeDatabase().then(() => {
+    // Initialize the app once the database is ready
+    initializeApp();
+});
 
 // File upload handling
 fileUpload.addEventListener('change', handleFileUpload);
@@ -766,8 +771,8 @@ volumeControl.addEventListener('input', function() {
     if (currentSong) {
         currentSong.volume(this.value);
     }
-    // Save volume setting to localStorage
-    localStorage.setItem('vinylPlayerVolume', this.value);
+    // Save volume setting to IndexedDB
+    saveSettings({ volume: this.value });
 });
 
 // Color options for record player
@@ -783,86 +788,308 @@ colorOptions.forEach(option => {
         const color = this.getAttribute('data-color');
         recordPlayer.style.backgroundColor = color;
         
-        // Save color preference to localStorage
-        localStorage.setItem('vinylPlayerColor', color);
+        // Save color preference to IndexedDB
+        saveSettings({ playerColor: color });
     });
 });
 
-// Initialize the application
-function initializeApp() {
-    // Load saved player color
-    loadSavedPlayerColor();
-    
-    // Load saved volume setting
-    loadSavedVolume();
-    
-    // Load saved custom tracks
-    loadSavedTracks();
-    
-    // Load last uploaded image if available
-    const savedImage = localStorage.getItem('lastUploadedImage');
-    if (savedImage) {
-        lastUploadedImage = savedImage;
-    }
-}
-
-// Load saved player color
-function loadSavedPlayerColor() {
-    const savedColor = localStorage.getItem('vinylPlayerColor');
-    if (savedColor) {
-        recordPlayer.style.backgroundColor = savedColor;
-        // Update selected color option
-        colorOptions.forEach(option => {
-            if (option.getAttribute('data-color') === savedColor) {
-                option.classList.add('selected');
-            } else {
-                option.classList.remove('selected');
-            }
-        });
-    }
-}
-
-// Load saved volume setting
-function loadSavedVolume() {
-    const savedVolume = localStorage.getItem('vinylPlayerVolume');
-    if (savedVolume) {
-        volumeControl.value = savedVolume;
-    }
-}
-
-// Load saved tracks
-function loadSavedTracks() {
-    songs = []; // Clear existing songs array
-    vinylSelector.innerHTML = ''; // Clear the vinyl selector
-    
-    // First load demo tracks
-    loadDemoTracks();
-    
-    // Then load user's custom tracks
-    const savedTracks = JSON.parse(localStorage.getItem('customTracks') || '[]');
-    
-    if (savedTracks.length > 0) {
-        savedTracks.forEach(track => {
-            // For saved tracks, we can't restore the actual audio file
-            // So we'll show a message to the user that they need to re-upload the file
-            const placeholder = document.createElement('div');
-            placeholder.className = 'vinyl-item placeholder';
-            placeholder.innerHTML = `
-                <div class="vinyl-image" style="background-image: url('${track.image}');"></div>
-                <div class="vinyl-details">
-                    <div class="vinyl-title">${track.title}</div>
-                    <div class="vinyl-artist">${track.artist}</div>
-                    <small>Please re-upload this file</small>
-                </div>
-            `;
-            vinylSelector.appendChild(placeholder);
-        });
+// Initialize IndexedDB
+async function initializeDatabase() {
+    return new Promise((resolve, reject) => {
+        const request = indexedDB.open('VinylPlayerDB', 1);
         
-        // Show message about re-uploading files
-        setTimeout(() => {
-            alert('Note: Due to browser security restrictions, audio files cannot be stored locally. Please re-upload your audio files to play them again.');
-        }, 1000);
-    }
+        request.onerror = function(event) {
+            console.error('IndexedDB error:', event.target.error);
+            reject(event.target.error);
+        };
+        
+        request.onupgradeneeded = function(event) {
+            const db = event.target.result;
+            
+            // Create object stores if they don't exist
+            if (!db.objectStoreNames.contains('tracks')) {
+                db.createObjectStore('tracks', { keyPath: 'id', autoIncrement: true });
+            }
+            
+            if (!db.objectStoreNames.contains('settings')) {
+                db.createObjectStore('settings', { keyPath: 'id' });
+            }
+            
+            if (!db.objectStoreNames.contains('albumArt')) {
+                db.createObjectStore('albumArt', { keyPath: 'id' });
+            }
+            
+            if (!db.objectStoreNames.contains('audioFiles')) {
+                db.createObjectStore('audioFiles', { keyPath: 'id' });
+            }
+        };
+        
+        request.onsuccess = function(event) {
+            db = event.target.result;
+            console.log('IndexedDB initialized successfully');
+            resolve();
+        };
+    });
+}
+
+// Initialize the application
+async function initializeApp() {
+    // Load saved player settings
+    await loadSettings();
+    
+    // Load custom album art
+    await loadAlbumArt();
+    
+    // Initialize demo tracks and load user tracks
+    songs = [];
+    vinylSelector.innerHTML = '';
+    loadDemoTracks();
+    await loadUserTracks();
+}
+
+// Save settings to IndexedDB
+function saveSettings(settingsObj) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['settings'], 'readwrite');
+        const store = transaction.objectStore('settings');
+        
+        // Merge with existing settings
+        const getRequest = store.get(1);
+        
+        getRequest.onsuccess = function(event) {
+            let currentSettings = event.target.result || { id: 1 };
+            const updatedSettings = { ...currentSettings, ...settingsObj };
+            
+            const putRequest = store.put(updatedSettings);
+            
+            putRequest.onsuccess = function() {
+                resolve();
+            };
+            
+            putRequest.onerror = function(e) {
+                reject(e.target.error);
+            };
+        };
+        
+        getRequest.onerror = function(e) {
+            reject(e.target.error);
+        };
+    });
+}
+
+// Load settings from IndexedDB
+async function loadSettings() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['settings'], 'readonly');
+        const store = transaction.objectStore('settings');
+        const request = store.get(1);
+        
+        request.onsuccess = function(event) {
+            const settings = event.target.result;
+            if (settings) {
+                // Apply saved volume
+                if (settings.volume) {
+                    volumeControl.value = settings.volume;
+                }
+                
+                // Apply saved player color
+                if (settings.playerColor) {
+                    recordPlayer.style.backgroundColor = settings.playerColor;
+                    // Update selected color option
+                    colorOptions.forEach(option => {
+                        if (option.getAttribute('data-color') === settings.playerColor) {
+                            option.classList.add('selected');
+                        } else {
+                            option.classList.remove('selected');
+                        }
+                    });
+                }
+            }
+            resolve(settings);
+        };
+        
+        request.onerror = function(e) {
+            reject(e.target.error);
+        };
+    });
+}
+
+// Save album art to IndexedDB
+async function saveAlbumArt(imageDataUrl) {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['albumArt'], 'readwrite');
+        const store = transaction.objectStore('albumArt');
+        
+        const artData = {
+            id: 'lastUploaded',
+            dataUrl: imageDataUrl,
+            timestamp: new Date().getTime()
+        };
+        
+        const request = store.put(artData);
+        
+        request.onsuccess = function() {
+            lastUploadedImage = imageDataUrl;
+            resolve();
+        };
+        
+        request.onerror = function(e) {
+            reject(e.target.error);
+        };
+    });
+}
+
+// Load album art from IndexedDB
+async function loadAlbumArt() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['albumArt'], 'readonly');
+        const store = transaction.objectStore('albumArt');
+        const request = store.get('lastUploaded');
+        
+        request.onsuccess = function(event) {
+            const artData = event.target.result;
+            if (artData) {
+                lastUploadedImage = artData.dataUrl;
+            }
+            resolve(artData);
+        };
+        
+        request.onerror = function(e) {
+            reject(e.target.error);
+        };
+    });
+}
+
+// Save track data and audio file to IndexedDB
+async function saveTrack(title, artist, image, audioBlob) {
+    return new Promise((resolve, reject) => {
+        // First save the audio file
+        const audioTransaction = db.transaction(['audioFiles'], 'readwrite');
+        const audioStore = audioTransaction.objectStore('audioFiles');
+        
+        const audioId = `audio_${new Date().getTime()}`;
+        const audioData = {
+            id: audioId,
+            blob: audioBlob,
+            timestamp: new Date().getTime()
+        };
+        
+        const audioRequest = audioStore.add(audioData);
+        
+        audioRequest.onsuccess = function() {
+            // Then save the track metadata
+            const trackTransaction = db.transaction(['tracks'], 'readwrite');
+            const trackStore = trackTransaction.objectStore('tracks');
+            
+            const trackData = {
+                title: title,
+                artist: artist,
+                image: image,
+                audioId: audioId,
+                timestamp: new Date().getTime()
+            };
+            
+            const trackRequest = trackStore.add(trackData);
+            
+            trackRequest.onsuccess = function(event) {
+                resolve(event.target.result); // Return the track ID
+            };
+            
+            trackRequest.onerror = function(e) {
+                reject(e.target.error);
+            };
+        };
+        
+        audioRequest.onerror = function(e) {
+            reject(e.target.error);
+        };
+    });
+}
+
+// Load user tracks from IndexedDB
+async function loadUserTracks() {
+    return new Promise((resolve, reject) => {
+        const transaction = db.transaction(['tracks', 'audioFiles'], 'readonly');
+        const trackStore = transaction.objectStore('tracks');
+        const audioStore = transaction.objectStore('audioFiles');
+        
+        const request = trackStore.getAll();
+        
+        request.onsuccess = async function(event) {
+            const tracks = event.target.result;
+            
+            // Process each track
+            for (const track of tracks) {
+                try {
+                    // Get the audio file for this track
+                    const audioData = await new Promise((resolveAudio, rejectAudio) => {
+                        const audioRequest = audioStore.get(track.audioId);
+                        
+                        audioRequest.onsuccess = function(e) {
+                            resolveAudio(e.target.result);
+                        };
+                        
+                        audioRequest.onerror = function(e) {
+                            rejectAudio(e.target.error);
+                        };
+                    });
+                    
+                    if (audioData && audioData.blob) {
+                        // Create object URL for the blob
+                        const objectURL = URL.createObjectURL(audioData.blob);
+                        
+                        // Create Howl instance for the track
+                        const sound = new Howl({
+                            src: [objectURL],
+                            html5: true,
+                            onplay: function() {
+                                startProgressUpdate();
+                            },
+                            onpause: function() {
+                                clearInterval(progressInterval);
+                            },
+                            onstop: function() {
+                                clearInterval(progressInterval);
+                                resetProgress();
+                            },
+                            onend: function() {
+                                clearInterval(progressInterval);
+                                resetProgress();
+                                playNextSong();
+                            },
+                            onload: function() {
+                                // Update total time display when loaded
+                                if (currentVinylIndex === songs.length - 1) {
+                                    updateTotalTime();
+                                }
+                            }
+                        });
+                        
+                        // Add to songs array
+                        songs.push({
+                            sound: sound,
+                            title: track.title,
+                            artist: track.artist,
+                            image: track.image,
+                            id: track.id
+                        });
+                        
+                        // Create vinyl item in selector
+                        const index = songs.length - 1;
+                        addVinylItemToSelector(track.title, track.artist, track.image, index, track.id);
+                    }
+                } catch (error) {
+                    console.error('Error loading track:', error);
+                }
+            }
+            
+            resolve();
+        };
+        
+        request.onerror = function(e) {
+            reject(e.target.error);
+        };
+    });
 }
 
 // Initialize demo tracks
@@ -909,63 +1136,71 @@ function loadDemoTracks() {
 }
 
 // Handle file upload
-function handleFileUpload(event) {
+async function handleFileUpload(event) {
     const files = event.target.files;
     if (!files.length) return;
     
     // Process each file
-    Array.from(files).forEach(file => {
-        // Create object URL for the file
-        const objectURL = URL.createObjectURL(file);
-        
-        // Extract file name (will be used as title)
-        const title = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
-        
-        // Pick a random image for this track or use the last uploaded one
-        const albumImage = lastUploadedImage || defaultAlbumImages[Math.floor(Math.random() * defaultAlbumImages.length)];
-        
-        // Create Howl instance for the track
-        const sound = new Howl({
-            src: [objectURL],
-            html5: true,
-            onplay: function() {
-                startProgressUpdate();
-            },
-            onpause: function() {
-                clearInterval(progressInterval);
-            },
-            onstop: function() {
-                clearInterval(progressInterval);
-                resetProgress();
-            },
-            onend: function() {
-                clearInterval(progressInterval);
-                resetProgress();
-                playNextSong();
-            },
-            onload: function() {
-                // Update total time display when loaded
-                if (currentVinylIndex === songs.length - 1) {
-                    updateTotalTime();
+    for (const file of Array.from(files)) {
+        try {
+            // Extract file name (will be used as title)
+            const title = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+            
+            // Pick a random image for this track or use the last uploaded one
+            const albumImage = lastUploadedImage || defaultAlbumImages[Math.floor(Math.random() * defaultAlbumImages.length)];
+            
+            // Create a copy of the file as Blob for storage
+            const audioBlob = file.slice(0, file.size, file.type);
+            
+            // Save track to IndexedDB
+            await saveTrack(title, "Unknown Artist", albumImage, audioBlob);
+            
+            // Create object URL for playback
+            const objectURL = URL.createObjectURL(file);
+            
+            // Create Howl instance for the track
+            const sound = new Howl({
+                src: [objectURL],
+                html5: true,
+                onplay: function() {
+                    startProgressUpdate();
+                },
+                onpause: function() {
+                    clearInterval(progressInterval);
+                },
+                onstop: function() {
+                    clearInterval(progressInterval);
+                    resetProgress();
+                },
+                onend: function() {
+                    clearInterval(progressInterval);
+                    resetProgress();
+                    playNextSong();
+                },
+                onload: function() {
+                    // Update total time display when loaded
+                    if (currentVinylIndex === songs.length - 1) {
+                        updateTotalTime();
+                    }
                 }
-            }
-        });
-        
-        // Add to songs array
-        songs.push({
-            sound: sound,
-            title: title,
-            artist: "Unknown Artist",
-            image: albumImage
-        });
-        
-        // Create vinyl item in selector
-        const index = songs.length - 1;
-        addVinylItemToSelector(title, "Unknown Artist", albumImage, index);
-        
-        // Save track info to localStorage
-        saveTrackToLocalStorage(title, "Unknown Artist", albumImage);
-    });
+            });
+            
+            // Add to songs array
+            songs.push({
+                sound: sound,
+                title: title,
+                artist: "Unknown Artist",
+                image: albumImage
+            });
+            
+            // Create vinyl item in selector
+            const index = songs.length - 1;
+            addVinylItemToSelector(title, "Unknown Artist", albumImage, index);
+        } catch (error) {
+            console.error('Error processing file:', error);
+            alert(`Error processing file: ${file.name}`);
+        }
+    }
     
     // Clear the file input to allow uploading the same file again
     fileUpload.value = '';
@@ -974,51 +1209,42 @@ function handleFileUpload(event) {
     vinylSelector.style.display = 'block';
 }
 
-// Save track information to localStorage
-function saveTrackToLocalStorage(title, artist, image) {
-    // Get existing tracks
-    const existingTracks = JSON.parse(localStorage.getItem('customTracks') || '[]');
-    
-    // Add new track info
-    existingTracks.push({
-        title: title,
-        artist: artist,
-        image: image
-    });
-    
-    // Save back to localStorage
-    localStorage.setItem('customTracks', JSON.stringify(existingTracks));
-}
-
 // Handle image upload
-function handleImageUpload(event) {
+async function handleImageUpload(event) {
     const file = event.target.files[0];
     if (!file) return;
     
-    // Read the file as Data URL
-    const reader = new FileReader();
-    reader.onload = function(e) {
-        // Store the image as Data URL in localStorage
-        const imageDataUrl = e.target.result;
-        localStorage.setItem('lastUploadedImage', imageDataUrl);
+    try {
+        // Read the file as Data URL
+        const imageDataUrl = await new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = e => resolve(e.target.result);
+            reader.onerror = e => reject(e);
+            reader.readAsDataURL(file);
+        });
         
-        // Update the variable
-        lastUploadedImage = imageDataUrl;
+        // Save to IndexedDB
+        await saveAlbumArt(imageDataUrl);
         
         // Alert the user
         alert("Image uploaded successfully! It will be used for the next audio file you upload.");
-    };
-    reader.readAsDataURL(file);
+    } catch (error) {
+        console.error('Error processing image:', error);
+        alert('Error uploading image.');
+    }
     
     // Clear the file input to allow uploading the same image again
     imageUpload.value = '';
 }
 
 // Add vinyl item to selector
-function addVinylItemToSelector(title, artist, image, index) {
+function addVinylItemToSelector(title, artist, image, index, trackId) {
     const vinylItem = document.createElement('div');
     vinylItem.className = 'vinyl-item';
     vinylItem.setAttribute('data-song', index);
+    if (trackId) {
+        vinylItem.setAttribute('data-track-id', trackId);
+    }
     
     vinylItem.innerHTML = `
         <div class="vinyl-image" style="background-image: url('${image}');"></div>
@@ -1038,8 +1264,12 @@ function addVinylItemToSelector(title, artist, image, index) {
 
 // Select vinyl
 function selectVinyl(index) {
-    // Stop current playback
-    stopPlayback();
+    // First check if we already have a playing song that's different from the one we're selecting
+    if (currentSong && currentVinylIndex !== index) {
+        // Stop current playback properly
+        pausePlayback(); // Pause first to ensure clean state
+        currentSong.stop(); // Then fully stop it
+    }
     
     // Set the new index
     currentVinylIndex = index;
@@ -1057,11 +1287,85 @@ function selectVinyl(index) {
     // Update total time
     updateTotalTime();
     
-    // Auto-play the vinyl
-    startPlayback();
+    // Auto-play the vinyl with realistic needle movement
+    moveNeedleToRecord(() => {
+        startPlayback();
+    });
     
-    // Save last played index
-    localStorage.setItem('lastPlayedIndex', index);
+    // Save last played index to settings
+    saveSettings({ lastPlayedIndex: index });
+}
+
+// Realistic needle movement
+function moveNeedleToRecord(callback) {
+    // First position: needle starts moving from the rest position
+    playerArm.style.transition = 'transform 0.8s ease-out';
+    playerArm.style.transform = 'rotate(-20deg)';
+    
+    // Add sound effect for needle movement (optional)
+    playNeedleSound('moving');
+    
+    // Clear any existing timeout
+    if (needleMovementTimeout) {
+        clearTimeout(needleMovementTimeout);
+    }
+    
+    // After a delay, move needle to the record
+    needleMovementTimeout = setTimeout(() => {
+        // Second position: needle reaches the record edge
+        playerArm.style.transform = 'rotate(-5deg)';
+        
+        // Play needle drop sound
+        playNeedleSound('drop');
+        
+        // After needle drops, move to final position and start playback
+        needleMovementTimeout = setTimeout(() => {
+            // Final position: needle on the record
+            playerArm.style.transform = 'rotate(0deg)';
+            
+            // Execute callback (start playback)
+            if (callback) callback();
+        }, 300);
+    }, 800);
+}
+
+// Simulate needle lifting
+function liftNeedle(callback) {
+    // First movement: needle starts lifting
+    playerArm.style.transition = 'transform 0.6s ease-in-out';
+    playerArm.style.transform = 'rotate(-10deg)';
+    
+    // Add sound effect for needle lifting (optional)
+    playNeedleSound('lifting');
+    
+    // Clear any existing timeout
+    if (needleMovementTimeout) {
+        clearTimeout(needleMovementTimeout);
+    }
+    
+    // After a delay, move needle to rest position
+    needleMovementTimeout = setTimeout(() => {
+        // Return to rest position
+        playerArm.style.transform = 'rotate(-45deg)';
+        
+        // Execute callback if provided
+        if (callback) callback();
+    }, 600);
+}
+
+// Play needle sound effects (placeholder function - implement actual sounds as needed)
+function playNeedleSound(type) {
+    // This is a placeholder for actual sound implementation
+    console.log(`Playing needle ${type} sound`);
+    
+    // You could implement actual sounds like this:
+    /*
+    const sound = new Howl({
+        src: [`needle_${type}.mp3`],
+        volume: 0.5
+    });
+    sound.play();
+    */
 }
 
 function startPlayback() {
@@ -1069,7 +1373,6 @@ function startPlayback() {
     
     // Visual updates
     activeRecord.classList.add('spinning');
-    playerArm.style.transform = 'rotate(0deg)';
     playingIndicator.classList.add('active');
     playPauseButton.textContent = '⏸️';
     nowPlaying.classList.add('active');
@@ -1100,18 +1403,27 @@ function stopPlayback() {
     
     // Visual updates
     activeRecord.classList.remove('spinning');
-    playerArm.style.transform = 'rotate(-45deg)';
     playingIndicator.classList.remove('active');
     playPauseButton.textContent = '▶️';
     nowPlaying.classList.remove('active');
     
-    // Stop the audio
-    currentSong.stop();
-    isPlaying = false;
+    // Lift the needle realistically before stopping
+    liftNeedle(() => {
+        // Stop the audio
+        currentSong.stop();
+        isPlaying = false;
+    });
 }
+
 
 function playNextSong() {
     if (currentVinylIndex === -1 || songs.length === 0) return;
+    
+    // Properly stop the current song before playing the next one
+    if (currentSong) {
+        pausePlayback(); // Pause first
+        currentSong.stop(); // Then stop completely
+    }
     
     const nextIndex = (currentVinylIndex + 1) % songs.length;
     selectVinyl(nextIndex);
@@ -1133,9 +1445,29 @@ function startProgressUpdate() {
                 
                 // Update time display
                 currentTimeDisplay.textContent = formatTime(currentTime);
+                
+                // Make the needle move slightly randomly to simulate vibration on a real record
+                simulateNeedleVibration();
             }
         }
     }, 100);
+}
+
+// Simulate slight needle vibration for realism
+function simulateNeedleVibration() {
+    // Only apply vibration if we're playing
+    if (!isPlaying) return;
+    
+    // Get current rotation
+    const currentRotation = playerArm.style.transform;
+    const baseRotation = 0; // Base rotation when playing
+    
+    // Generate a tiny random variance
+    const variance = (Math.random() * 0.6 - 0.3); // Between -0.3 and +0.3 degrees
+    
+    // Apply the variance
+    playerArm.style.transition = 'transform 0.1s ease';
+    playerArm.style.transform = `rotate(${baseRotation + variance}deg)`;
 }
 
 function resetProgress() {
@@ -1158,16 +1490,20 @@ function formatTime(seconds) {
     return `${minutes}:${secs < 10 ? '0' + secs : secs}`;
 }
 
-// Add a clear storage button (optional)
-function addClearStorageButton() {
+// Add a clear IndexedDB button (optional)
+function addClearDBButton() {
     const clearButton = document.createElement('button');
     clearButton.textContent = 'Clear Saved Tracks';
     clearButton.style.margin = '10px';
     clearButton.addEventListener('click', function() {
         if (confirm('Are you sure you want to clear all saved tracks?')) {
-            localStorage.removeItem('customTracks');
-            localStorage.removeItem('lastUploadedImage');
-            alert('Saved tracks cleared. Refresh the page to see changes.');
+            clearDatabase().then(() => {
+                alert('All saved data cleared. Refresh the page to see changes.');
+                window.location.reload();
+            }).catch(error => {
+                console.error('Error clearing database:', error);
+                alert('Error clearing saved data.');
+            });
         }
     });
     
@@ -1175,8 +1511,29 @@ function addClearStorageButton() {
     document.body.appendChild(clearButton);
 }
 
-// Uncomment to add the clear storage button
-// addClearStorageButton();
+// Clear the entire database
+async function clearDatabase() {
+    const storeNames = ['tracks', 'audioFiles', 'albumArt'];
+    const promises = [];
+    
+    for (const storeName of storeNames) {
+        promises.push(new Promise((resolve, reject) => {
+            const transaction = db.transaction([storeName], 'readwrite');
+            const store = transaction.objectStore(storeName);
+            const request = store.clear();
+            
+            request.onsuccess = function() {
+                resolve();
+            };
+            
+            request.onerror = function(e) {
+                reject(e.target.error);
+            };
+        }));
+    }
+    
+    return Promise.all(promises);
+}
     </script>
 </body>
 </html>
