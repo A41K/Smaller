@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vinyl Record Player</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: #2c2c2c;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            color: white;
+            overflow: hidden;
+        }
+        
+        .record-player-container {
+            position: relative;
+            width: 500px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        
+        .record-player {
+            width: 400px;
+            height: 400px;
+            background-color: #8B4513;
+            border-radius: 10px;
+            position: relative;
+            box-shadow: 0 15px 35px rgba(0,0,0,0.5);
+            cursor: pointer;
+            margin-bottom: 20px;
+            transition: background-color 0.5s ease;
+        }
+        
+        .color-options {
+            display: flex;
+            gap: 10px;
+            margin-top: 20px;
+            justify-content: center;
+        }
+        
+        .color-option {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: transform 0.2s ease;
+        }
+        
+        .color-option:hover {
+            transform: scale(1.2);
+        }
+        
+        .color-option.selected {
+            border-color: white;
+        }
+        
+        .player-center {
+            position: absolute;
+            width: 300px;
+            height: 300px;
+            background-color: #333;
+            border-radius: 50%;
+            top: 50px;
+            left: 50px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        .turntable {
+            position: absolute;
+            width: 250px;
+            height: 250px;
+            background-color: #111;
+            border-radius: 50%;
+            transition: transform 0.5s ease-in-out;
+        }
+        
+        .record {
+            position: absolute;
+            width: 240px;
+            height: 240px;
+            background-color: #111;
+            border-radius: 50%;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .record-vinyl {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: radial-gradient(
+                circle,
+                rgba(50, 50, 50, 0.9) 35px,
+                #111 36px,
+                #111 70px,
+                rgba(30, 30, 30, 0.5) 71px,
+                rgba(30, 30, 30, 0.5) 72px,
+                #111 73px,
+                #111 78px,
+                rgba(30, 30, 30, 0.5) 79px,
+                rgba(30, 30, 30, 0.5) 80px,
+                #111 81px,
+                #111 86px,
+                rgba(30, 30, 30, 0.5) 87px,
+                rgba(30, 30, 30, 0.5) 88px,
+                #111 89px,
+                #111 94px,
+                rgba(30, 30, 30, 0.5) 95px,
+                rgba(30, 30, 30, 0.5) 96px,
+                #111 97px,
+                #111 102px,
+                rgba(30, 30, 30, 0.5) 103px,
+                rgba(30, 30, 30, 0.5) 104px,
+                #111 105px,
+                #111 110px,
+                rgba(30, 30, 30, 0.5) 111px,
+                rgba(30, 30, 30, 0.5) 112px,
+                #111 113px,
+                #111 118px,
+                rgba(30, 30, 30, 0.5) 119px,
+                rgba(30, 30, 30, 0.5) 120px
+            );
+            z-index: 2;
+        }
+        
+        .record-label {
+            position: absolute;
+            width: 100px;
+            height: 100px;
+            border-radius: 50%;
+            background-size: cover;
+            background-position: center;
+            box-shadow: 0 0 10px rgba(0, 0, 0, 0.5);
+            z-index: 3;
+        }
+        
+        .record-reflection {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border-radius: 50%;
+            background: linear-gradient(135deg, rgba(255, 255, 255, 0.1) 0%, rgba(255, 255, 255, 0) 50%, rgba(255, 255, 255, 0.05) 100%);
+            z-index: 4;
+            pointer-events: none;
+        }
+        
+        .record.active {
+            opacity: 1;
+        }
+        
+        .record.spinning {
+            animation: spin 3s linear infinite;
+        }
+        
+        .center-hole {
+            position: absolute;
+            width: 10px;
+            height: 10px;
+            background-color: #000;
+            border-radius: 50%;
+            z-index: 5;
+            box-shadow: 0 0 0 15px #c0c0c0;
+        }
+        
+        .arm-base {
+            position: absolute;
+            width: 50px;
+            height: 50px;
+            background-color: #555;
+            border-radius: 50%;
+            top: 50px;
+            right: 50px;
+            z-index: 2;
+        }
+        
+        .arm {
+            position: absolute;
+            width: 150px;
+            height: 10px;
+            background-color: #888;
+            top: 70px;
+            right: 20px;
+            transform-origin: right center;
+            transform: rotate(-45deg);
+            transition: transform 0.5s ease;
+            z-index: 2;
+        }
+        
+        .needle {
+            position: absolute;
+            width: 20px;
+            height: 5px;
+            background-color: #aaa;
+            left: 0;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+        
+        .playing-indicator {
+            width: 10px;
+            height: 10px;
+            background-color: #f00;
+            border-radius: 50%;
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            display: none;
+        }
+        
+        .playing-indicator.active {
+            display: block;
+            animation: blink 1s infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        .vinyl-selector {
+            display: none;
+            width: 80%;
+            max-height: 300px;
+            overflow-y: auto;
+            background-color: #333;
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        }
+        
+        .vinyl-item {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #444;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+        }
+        
+        .vinyl-item:hover {
+            background-color: #555;
+        }
+        
+        .vinyl-image {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            margin-right: 15px;
+            background-size: cover;
+            background-position: center;
+            border: 3px solid #111;
+        }
+        
+        .vinyl-details {
+            flex-grow: 1;
+        }
+        
+        .vinyl-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .vinyl-artist {
+            font-size: 0.9em;
+            color: #ccc;
+        }
+        
+        .controls {
+            margin-top: 20px;
+            display: flex;
+            gap: 20px;
+        }
+        
+        .control-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background-color: #555;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            cursor: pointer;
+            transition: background-color 0.3s ease;
+            box-shadow: 0 3px 8px rgba(0,0,0,0.3);
+        }
+        
+        .control-button:hover {
+            background-color: #777;
+        }
+        
+        .control-button:active {
+            transform: translateY(2px);
+            box-shadow: 0 1px 4px rgba(0,0,0,0.3);
+        }
+        
+        .volume-container {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+        }
+        
+        .volume-icon {
+            margin-right: 10px;
+        }
+        
+        .volume-slider {
+            width: 100px;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 5px;
+            background: #666;
+            border-radius: 5px;
+            outline: none;
+            transition: opacity 0.2s;
+        }
+        
+        .volume-slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+        }
+        
+        .volume-slider::-moz-range-thumb {
+            width: 15px;
+            height: 15px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+        }
+        
+        .now-playing {
+            margin-top: 15px;
+            background-color: rgba(0, 0, 0, 0.3);
+            padding: 10px;
+            border-radius: 5px;
+            width: 80%;
+            text-align: center;
+            opacity: 0;
+            transition: opacity 0.5s ease;
+        }
+        
+        .now-playing.active {
+            opacity: 1;
+        }
+
+        .file-upload-container {
+            margin-top: 20px;
+            text-align: center;
+            width: 80%;
+        }
+
+        .file-upload-button {
+            background-color: #555;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+
+        .file-upload-button:hover {
+            background-color: #777;
+        }
+
+        #fileUpload {
+            display: none;
+        }
+
+        .image-upload-container {
+            margin-top: 10px;
+            text-align: center;
+            width: 80%;
+        }
+
+        .image-upload-button {
+            background-color: #555;
+            color: white;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            display: inline-block;
+            transition: background-color 0.3s ease;
+        }
+
+        .image-upload-button:hover {
+            background-color: #777;
+        }
+
+        #imageUpload {
+            display: none;
+        }
+
+        .song-progress {
+            width: 80%;
+            height: 5px;
+            background-color: #444;
+            border-radius: 5px;
+            margin-top: 15px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .progress-bar {
+            height: 100%;
+            background-color: #f00;
+            width: 0;
+            transition: width 0.1s linear;
+        }
+
+        .time-display {
+            display: flex;
+            justify-content: space-between;
+            width: 80%;
+            font-size: 0.8em;
+            color: #aaa;
+            margin-top: 5px;
+        }
+        
+        @keyframes spin {
+            from {
+                transform: rotate(0deg);
+            }
+            to {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="record-player-container">
+        <div class="record-player" id="recordPlayer">
+            <div class="player-center">
+                <div class="turntable"></div>
+                <div class="record" id="activeRecord">
+                    <div class="record-vinyl"></div>
+                    <div class="record-label" id="recordLabel"></div>
+                    <div class="record-reflection"></div>
+                </div>
+                <div class="center-hole"></div>
+            </div>
+            <div class="arm-base"></div>
+            <div class="arm" id="playerArm">
+                <div class="needle"></div>
+            </div>
+            <div class="playing-indicator" id="playingIndicator"></div>
+            <div class="volume-container">
+                <div class="volume-icon">🔊</div>
+                <input type="range" class="volume-slider" id="volumeControl" min="0" max="1" step="0.1" value="0.5">
+            </div>
+        </div>
+        
+        <div class="controls">
+            <div class="control-button" id="playPauseButton">▶️</div>
+            <div class="control-button" id="stopButton">⏹️</div>
+            <div class="control-button" id="nextButton">⏭️</div>
+        </div>
+        
+        <div class="color-options">
+            <div class="color-option selected" style="background-color: #8B4513;" data-color="#8B4513"></div>
+            <div class="color-option" style="background-color: #2e2e2e;" data-color="#2e2e2e"></div>
+            <div class="color-option" style="background-color: #4a3c2f;" data-color="#4a3c2f"></div>
+            <div class="color-option" style="background-color: #91754d;" data-color="#91754d"></div>
+            <div class="color-option" style="background-color: #8e684f;" data-color="#8e684f"></div>
+            <div class="color-option" style="background-color: #b19297;" data-color="#b19297"></div>
+            <div class="color-option" style="background-color: #5c4e4d;" data-color="#5c4e4d"></div>
+        </div>
+        
+        <div class="now-playing" id="nowPlaying">
+            Now Playing: <span id="currentTrack">No track selected</span>
+        </div>
+        
+        <div class="song-progress">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+        
+        <div class="time-display">
+            <span id="currentTime">0:00</span>
+            <span id="totalTime">0:00</span>
+        </div>
+        
+        <div class="file-upload-container">
+            <label for="fileUpload" class="file-upload-button">Upload MP3 Files</label>
+            <input type="file" id="fileUpload" accept="audio/mp3" multiple>
+        </div>
+        
+        <div class="image-upload-container">
+            <label for="imageUpload" class="image-upload-button">Upload Album Art</label>
+            <input type="file" id="imageUpload" accept="image/*">
+        </div>
+        
+        <div class="vinyl-selector" id="vinylSelector">
+            <!-- Songs will be added here dynamically -->
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/howler/2.2.3/howler.min.js"></script>
+    <script>
+        // DOM elements
+        const recordPlayer = document.getElementById('recordPlayer');
+        const vinylSelector = document.getElementById('vinylSelector');
+        const activeRecord = document.getElementById('activeRecord');
+        const recordLabel = document.getElementById('recordLabel');
+        const playerArm = document.getElementById('playerArm');
+        const playingIndicator = document.getElementById('playingIndicator');
+        const playPauseButton = document.getElementById('playPauseButton');
+        const stopButton = document.getElementById('stopButton');
+        const nextButton = document.getElementById('nextButton');
+        const volumeControl = document.getElementById('volumeControl');
+        const colorOptions = document.querySelectorAll('.color-option');
+        const nowPlaying = document.getElementById('nowPlaying');
+        const currentTrack = document.getElementById('currentTrack');
+        const fileUpload = document.getElementById('fileUpload');
+        const imageUpload = document.getElementById('imageUpload');
+        const progressBar = document.getElementById('progressBar');
+        const currentTimeDisplay = document.getElementById('currentTime');
+        const totalTimeDisplay = document.getElementById('totalTime');
+        
+        // Audio setup
+        let currentSong = null;
+        let isPlaying = false;
+        let currentVinylIndex = -1;
+        let songs = [];
+        let progressInterval;
+        let lastUploadedImage = null;
+        
+        // Default album images (placeholder URLs - in a real application, you would use actual images)
+        const defaultAlbumImages = [
+            "DAMN.png", // Using placeholder images as examples
+            "/api/placeholder/100/100",
+            "/api/placeholder/100/100",
+            "/api/placeholder/100/100",
+            "/api/placeholder/100/100"
+        ];
+        
+        // Initialize with demo tracks
+        const demoTracks = [
+            {
+                title: "BLOOD.",
+                artist: "Kendrick Lamar",
+                image: defaultAlbumImages[0],
+                url: "/DAMN/BLOOD.mp3"
+            },
+            {
+                title: "Demo Track 2",
+                artist: "Demo Artist",
+                image: defaultAlbumImages[1],
+                url: "https://file-examples.com/storage/fe8c7eef0c6364f6c9504cc/2017/11/file_example_MP3_1MG.mp3"
+            }
+        ];
+        
+        // Initialize songs with demo tracks
+        initializeDemoTracks();
+        
+        // File upload handling
+        fileUpload.addEventListener('change', handleFileUpload);
+        imageUpload.addEventListener('change', handleImageUpload);
+        
+        // Toggle vinyl selector
+        recordPlayer.addEventListener('click', function() {
+            if (vinylSelector.style.display === 'block') {
+                vinylSelector.style.display = 'none';
+            } else {
+                vinylSelector.style.display = 'block';
+            }
+        });
+        
+        // Play/Pause button
+        playPauseButton.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent triggering the record player click
+            
+            if (currentVinylIndex === -1) {
+                // No vinyl selected
+                alert('Please select a track first!');
+                vinylSelector.style.display = 'block';
+                return;
+            }
+            
+            if (isPlaying) {
+                pausePlayback();
+            } else {
+                startPlayback();
+            }
+        });
+        
+        // Stop button
+        stopButton.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent triggering the record player click
+            stopPlayback();
+        });
+        
+        // Next button
+        nextButton.addEventListener('click', function(e) {
+            e.stopPropagation(); // Prevent triggering the record player click
+            playNextSong();
+        });
+        
+        // Volume control
+        volumeControl.addEventListener('input', function() {
+            if (currentSong) {
+                currentSong.volume(this.value);
+            }
+        });
+        
+        // Color options for record player
+        colorOptions.forEach(option => {
+            option.addEventListener('click', function(e) {
+                e.stopPropagation(); // Prevent opening the vinyl selector
+                
+                // Update selected state
+                colorOptions.forEach(opt => opt.classList.remove('selected'));
+                this.classList.add('selected');
+                
+                // Change record player color
+                const color = this.getAttribute('data-color');
+                recordPlayer.style.backgroundColor = color;
+            });
+        });
+        
+        // Initialize demo tracks
+        function initializeDemoTracks() {
+            songs = [];
+            vinylSelector.innerHTML = ''; // Clear existing items
+            
+            demoTracks.forEach((track, index) => {
+                // Create Howl instance for the track
+                const sound = new Howl({
+                    src: [track.url],
+                    html5: true,
+                    onplay: function() {
+                        startProgressUpdate();
+                    },
+                    onpause: function() {
+                        clearInterval(progressInterval);
+                    },
+                    onstop: function() {
+                        clearInterval(progressInterval);
+                        resetProgress();
+                    },
+                    onend: function() {
+                        clearInterval(progressInterval);
+                        resetProgress();
+                        playNextSong();
+                    },
+                    onload: function() {
+                        // Update total time display when loaded
+                        if (currentVinylIndex === index) {
+                            updateTotalTime();
+                        }
+                    }
+                });
+                
+                // Add to songs array
+                songs.push({
+                    sound: sound,
+                    title: track.title,
+                    artist: track.artist,
+                    image: track.image
+                });
+                
+                // Create vinyl item in selector
+                addVinylItemToSelector(track.title, track.artist, track.image, index);
+            });
+        }
+        
+        // Handle file upload
+        function handleFileUpload(event) {
+            const files = event.target.files;
+            if (!files.length) return;
+            
+            // Process each file
+            Array.from(files).forEach(file => {
+                // Create object URL for the file
+                const objectURL = URL.createObjectURL(file);
+                
+                // Extract file name (will be used as title)
+                const title = file.name.replace(/\.[^/.]+$/, ""); // Remove extension
+                
+                // Pick a random image for this track or use the last uploaded one
+                const albumImage = lastUploadedImage || defaultAlbumImages[Math.floor(Math.random() * defaultAlbumImages.length)];
+                
+                // Create Howl instance for the track
+                const sound = new Howl({
+                    src: [objectURL],
+                    html5: true,
+                    onplay: function() {
+                        startProgressUpdate();
+                    },
+                    onpause: function() {
+                        clearInterval(progressInterval);
+                    },
+                    onstop: function() {
+                        clearInterval(progressInterval);
+                        resetProgress();
+                    },
+                    onend: function() {
+                        clearInterval(progressInterval);
+                        resetProgress();
+                        playNextSong();
+                    },
+                    onload: function() {
+                        // Update total time display when loaded
+                        if (currentVinylIndex === songs.length - 1) {
+                            updateTotalTime();
+                        }
+                    }
+                });
+                
+                // Add to songs array
+                songs.push({
+                    sound: sound,
+                    title: title,
+                    artist: "Unknown Artist",
+                    image: albumImage
+                });
+                
+                // Create vinyl item in selector
+                const index = songs.length - 1;
+                addVinylItemToSelector(title, "Unknown Artist", albumImage, index);
+            });
+            
+            // Clear the file input to allow uploading the same file again
+            fileUpload.value = '';
+            
+            // Display the vinyl selector
+            vinylSelector.style.display = 'block';
+        }
+        
+        // Handle image upload
+        function handleImageUpload(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            
+            // Create object URL for the image
+            const imageURL = URL.createObjectURL(file);
+            
+            // Store the last uploaded image
+            lastUploadedImage = imageURL;
+            
+            // Alert the user
+            alert("Image uploaded successfully! It will be used for the next audio file you upload.");
+            
+            // Clear the file input to allow uploading the same image again
+            imageUpload.value = '';
+        }
+        
+        // Add vinyl item to selector
+        function addVinylItemToSelector(title, artist, image, index) {
+            const vinylItem = document.createElement('div');
+            vinylItem.className = 'vinyl-item';
+            vinylItem.setAttribute('data-song', index);
+            
+            vinylItem.innerHTML = `
+                <div class="vinyl-image" style="background-image: url('${image}');"></div>
+                <div class="vinyl-details">
+                    <div class="vinyl-title">${title}</div>
+                    <div class="vinyl-artist">${artist}</div>
+                </div>
+            `;
+            
+            vinylItem.addEventListener('click', function() {
+                selectVinyl(index);
+                vinylSelector.style.display = 'none';
+            });
+            
+            vinylSelector.appendChild(vinylItem);
+        }
+        
+        // Select vinyl
+        function selectVinyl(index) {
+            // Stop current playback
+            stopPlayback();
+            
+            // Set the new index
+            currentVinylIndex = index;
+            
+            // Update visuals
+            activeRecord.classList.add('active');
+            recordLabel.style.backgroundImage = `url('${songs[index].image}')`;
+            
+            // Update now playing text
+            currentTrack.textContent = `${songs[index].title} - ${songs[index].artist}`;
+            
+            // Prepare the song
+            currentSong = songs[index].sound;
+            
+            // Update total time
+            updateTotalTime();
+            
+            // Auto-play the vinyl
+            startPlayback();
+        }
+        
+        function startPlayback() {
+            if (!currentSong || currentVinylIndex === -1) return;
+            
+            // Visual updates
+            activeRecord.classList.add('spinning');
+            playerArm.style.transform = 'rotate(0deg)';
+            playingIndicator.classList.add('active');
+            playPauseButton.textContent = '⏸️';
+            nowPlaying.classList.add('active');
+            
+            // Set volume
+            currentSong.volume(volumeControl.value);
+            
+            // Start playback
+            currentSong.play();
+            isPlaying = true;
+        }
+        
+        function pausePlayback() {
+            if (!currentSong) return;
+            
+            // Visual updates
+            activeRecord.classList.remove('spinning');
+            playingIndicator.classList.remove('active');
+            playPauseButton.textContent = '▶️';
+            
+            // Pause the audio
+            currentSong.pause();
+            isPlaying = false;
+        }
+        
+        function stopPlayback() {
+            if (!currentSong) return;
+            
+            // Visual updates
+            activeRecord.classList.remove('spinning');
+            playerArm.style.transform = 'rotate(-45deg)';
+            playingIndicator.classList.remove('active');
+            playPauseButton.textContent = '▶️';
+            nowPlaying.classList.remove('active');
+            
+            // Stop the audio
+            currentSong.stop();
+            isPlaying = false;
+        }
+        
+        function playNextSong() {
+            if (currentVinylIndex === -1 || songs.length === 0) return;
+            
+            const nextIndex = (currentVinylIndex + 1) % songs.length;
+            selectVinyl(nextIndex);
+        }
+        
+        // Progress bar and time updates
+        function startProgressUpdate() {
+            clearInterval(progressInterval);
+            
+            progressInterval = setInterval(() => {
+                if (currentSong && isPlaying) {
+                    const currentTime = currentSong.seek();
+                    const duration = currentSong.duration();
+                    
+                    if (duration > 0) {
+                        // Update progress bar
+                        const percentage = (currentTime / duration) * 100;
+                        progressBar.style.width = `${percentage}%`;
+                        
+                        // Update time display
+                        currentTimeDisplay.textContent = formatTime(currentTime);
+                    }
+                }
+            }, 100);
+        }
+        
+        function resetProgress() {
+            progressBar.style.width = '0%';
+            currentTimeDisplay.textContent = '0:00';
+        }
+        
+        function updateTotalTime() {
+            if (currentSong) {
+                const duration = currentSong.duration();
+                totalTimeDisplay.textContent = formatTime(duration);
+            }
+        }
+        
+        function formatTime(seconds) {
+            if (isNaN(seconds) || !isFinite(seconds)) return '0:00';
+            
+            const minutes = Math.floor(seconds / 60);
+            const secs = Math.floor(seconds % 60);
+            return `${minutes}:${secs < 10 ? '0' + secs : secs}`;
+        }
+    </script>
+</body>
+</html>
